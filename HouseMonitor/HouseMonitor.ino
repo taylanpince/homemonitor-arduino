@@ -164,11 +164,11 @@ boolean logData(float temperature, float humidity, long uv_exposure, int luminan
   dtostrf(temperature, 1, 2, temp);
   dtostrf(humidity, 1, 2, humid);
 
-  payload = payload + "\n" + "{\"temperature\": " + temp + ", " + 
-                              "\"humidity\": " + humid + ", " + 
-                              "\"uv\": " + String(uv_exposure) + ", " + 
-                              "\"luminance\": " + String(luminance) + ", " + 
-                              "\"loudness\": " + String(loudness) + "}";
+  payload = payload + "\n" + "{\"temperature\": \"" + temp + "\", " + 
+                              "\"humidity\": \"" + humid + "\", " + 
+                              "\"uv\": \"" + String(uv_exposure) + "\", " + 
+                              "\"luminance\": \"" + String(luminance) + "\", " + 
+                              "\"loudness\": \"" + String(loudness) + "\"}";
 
   Serial.println(F("\nPayload ready: "));
   Serial.println(payload);
