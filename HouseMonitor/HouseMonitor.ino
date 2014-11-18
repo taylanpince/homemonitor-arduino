@@ -64,6 +64,9 @@ void setup() {
     while(1);
   }
   
+  // Enable watchdog
+  wdt_enable(WDTO_8S);
+
   Serial.println(F("Connected!"));
   
   /* Wait for DHCP to complete */
@@ -73,12 +76,18 @@ void setup() {
     delay(100);
   }
 
+  // Reset watchdog
+  wdt_reset();
+
   Serial.println(F("\nGetting IP"));
 
   /* Display the IP address DNS, Gateway, etc. */  
   while (!displayConnectionDetails()) {
     delay(1000);
   }
+
+  // Reset watchdog
+  wdt_reset();
 
   Serial.println(F("\nResolving host"));
 
@@ -94,7 +103,8 @@ void setup() {
   
   cc3000.printIPdotsRev(server_ip);
 
-
+  // Reset watchdog
+  wdt_reset();
 
   // Ping server
   Serial.print(F("\nPinging server: "));
@@ -108,14 +118,19 @@ void setup() {
 
   Serial.println(F("Ping success!"));
 
-  
-  
+  // Reset watchdog
+  wdt_reset();
+
   Serial.println(F("\n"));
 
   delay(100);
 
   TH02.begin();
-
+  
+  // Reset watchdog & disable
+  wdt_reset();
+  wdt_disable();
+  
   // delay(100);
 
   // airqualitysensor.init(14);
@@ -170,6 +185,8 @@ boolean logData(float temperature, float humidity, long uv_exposure, int luminan
                               "\"luminance\": \"" + String(luminance) + "\", " + 
                               "\"loudness\": \"" + String(loudness) + "\"}";
 
+  int length = payload.length();
+
   Serial.println(F("\nPayload ready: "));
   Serial.println(payload);
 
@@ -180,6 +197,7 @@ boolean logData(float temperature, float humidity, long uv_exposure, int luminan
   Serial.print(F("\nChecking WiFi connection: "));
 
   if (!cc3000.checkConnected()) {
+    Serial.println(F("Failed"));
     while(1){}
   }
 
@@ -207,6 +225,7 @@ boolean logData(float temperature, float humidity, long uv_exposure, int luminan
 
   if (!client.connected()) {
     Serial.println(F("Not connected"));
+
     // Reset watchdog & disable
     wdt_reset();
     wdt_disable();
@@ -237,28 +256,51 @@ boolean logData(float temperature, float humidity, long uv_exposure, int luminan
   client.fastrprintln(F("Content-Type: application/json"));
   client.fastrprint(F("Host: "));
   client.fastrprintln(server_host);
+
+  // Reset watchdog
+  wdt_reset();
+
   client.fastrprint(F("User-Agent: "));
   client.fastrprintln(user_agent);
   client.fastrprint(F("Content-Length: "));
-  client.println(payload.length());
+  client.println(length);
   client.fastrprint(F("Connection: close"));
-
+  
   // Reset watchdog
   wdt_reset();
   
   // Send data
-  Serial.println(F("\nSending request"));  
+  Serial.println(F("\nSending request"));
 
   client.fastrprintln(F(""));
+  wdt_reset();
   sendData(client, payload, buffer_size);
+  wdt_reset();
   client.fastrprintln(F(""));
+
+  // Reset watchdog & disable
+  wdt_reset();
+  wdt_disable();
+
+  // sendData(client, payload, buffer_size);
+  // client.fastrprintln(F(""));
 
   // Reset watchdog
-  wdt_reset();
+  // wdt_reset();
 
-  Serial.println(F("Reading answer"));
+  Serial.println(F("\n\nReading answer"));
+
+  uint32_t request_time = millis();
 
   while (client.connected()) {
+    if ((millis() - request_time) > 2000) {
+      Serial.println(F("Failed"));
+
+      client.close();
+
+      return false;
+    }
+
     while (client.available()) {
       char c = client.read();
       Serial.print(c);
@@ -266,16 +308,14 @@ boolean logData(float temperature, float humidity, long uv_exposure, int luminan
   }
 
   // Reset watchdog
-  wdt_reset();
+  // wdt_reset();
 
-   
+  Serial.println(F("\nClosing connection"));
+
   // Close connection and disconnect
   client.close();
-  Serial.println(F("Closing connection"));
-  
-  // Reset watchdog & disable
-  wdt_reset();
-  wdt_disable();
+
+  return true;
   
 }
 
@@ -317,25 +357,14 @@ void loop() {
 
   Serial.println(F("\nCollection done"));
 
-  logData(temperature, humidity, uv_exposure, luminance, loudness);
-  
-  // Wait 10 seconds until next update
-  wait(10000);
+  if (logData(temperature, humidity, uv_exposure, luminance, loudness)) {
+    // Wait 60 seconds until next update
+    delay(60000);
+  } else {
+    // Try again in 5 seconds
+    delay(5000);
+  }
 }
-
-// Air quality loop
-// ISR(TIMER2_OVF_vect) {
-  
-//   if (airqualitysensor.counter == 122) {
-//       airqualitysensor.last_vol = airqualitysensor.first_vol;
-//       airqualitysensor.first_vol = analogRead(A0);
-//       airqualitysensor.counter = 0;
-//       airqualitysensor.timer_index = 1;
-//       PORTB=PORTB^0x20;
-//   } else {
-//     airqualitysensor.counter++;
-//   }
-// }
 
 // Send data chunk by chunk
 void sendData(Adafruit_CC3000_Client& client, String input, int chunkSize) {
@@ -346,7 +375,7 @@ void sendData(Adafruit_CC3000_Client& client, String input, int chunkSize) {
   
   for (int i = 0; i < length; i++) {
     client.print(input.substring(i * chunkSize, (i + 1) * chunkSize));
-
+    Serial.print(F("."));
     wdt_reset();
   }  
 }
